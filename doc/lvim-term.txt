@@ -1,0 +1,234 @@
+*lvim-term.txt*        Persistent, named, toggleable terminals with a tab bar
+
+==============================================================================
+CONTENTS                                                    *lvim-term-contents*
+
+    1. Introduction ......................... |lvim-term-introduction|
+    2. Requirements ......................... |lvim-term-requirements|
+    3. Installation ......................... |lvim-term-installation|
+    4. Setup ................................ |lvim-term-setup|
+    5. Command .............................. |lvim-term-command|
+    6. Tabs & keys .......................... |lvim-term-tabs|
+    7. Send API ............................. |lvim-term-send|
+    8. Layouts .............................. |lvim-term-layouts|
+    9. Highlights ........................... |lvim-term-highlights|
+   10. Health ............................... |lvim-term-health|
+
+==============================================================================
+1. INTRODUCTION                                         *lvim-term-introduction*
+
+lvim-term owns PERSISTENT, named, toggleable terminals — a drop-down terminal
+with a clickable tab bar. Distinct from lvim-shell (one-shot TUI-app launchers
+with a result callback): here a terminal is a long-lived shell kept alive while
+hidden, toggled in/out of a shared window, switched via tabs, and SENT commands
+(the builds / REPL workflow).
+
+One shared window is reused: switching terminals swaps its buffer IN PLACE (no
+window churn), the way a drop-down terminal cycles. A dead shell keeps its
+buffer visible (readable final output) unless `close_on_exit` is set; it can be
+respawned in the same slot (id and name stay stable).
+
+==============================================================================
+2. REQUIREMENTS                                         *lvim-term-requirements*
+
+- Neovim >= 0.10
+- lvim-utils (palette + theming)
+- optional: lvim-ui — the kill-confirm dialog + the `select` chooser (both
+  degrade gracefully without it; the tabs still work)
+- optional: lvim-msgarea — hosts the `area` layout in its message-area zone
+  (without it, `area` falls back to the bottom dock)
+
+==============================================================================
+3. INSTALLATION                                         *lvim-term-installation*
+
+lvim-installer (recommended): >vim
+    :LvimInstaller plugins
+<
+Native (vim.pack): >lua
+    vim.pack.add({
+        { src = "https://github.com/lvim-tech/lvim-utils" },
+        { src = "https://github.com/lvim-tech/lvim-term" },
+    })
+    require("lvim-term").setup({})
+<
+==============================================================================
+4. SETUP                                                       *lvim-term-setup*
+
+                                                            *lvim-term.setup()*
+setup({opts}) merges {opts} into the live config in place and registers
+`:LvimTerm`. The full default config: >lua
+    require("lvim-term").setup({
+        layout = "bottom",     -- "float" | "area" | "bottom"
+        dock = {               -- dock integration (namespaced, uniform with lvim-dependencies)
+            dock_stack = true, -- join the shared dock STACK (managed) vs standalone
+            force = {          -- per-layout ANCHORED geometry overrides ({} = inherit)
+                float = {},    -- may add width / width_auto (float only)
+                area = {},     -- full-width (no width / width_auto)
+                bottom = {},   -- full-width (no width / width_auto)
+            },
+        },
+        shell = nil,           -- command to run (nil = 'shell')
+        start_in_insert = true,-- enter terminal-insert when shown
+        cwd = "file",          -- "file" | "cwd" | function() -> dir
+        close_on_exit = false, -- keep the exited buffer (true = close)
+        tabs = true,           -- the clickable tab bar in the winbar
+        keys = {               -- buffer-local keys inside a terminal
+            next = "<A-l>",       -- next terminal tab
+            prev = "<A-h>",       -- previous terminal tab
+            new = "<A-n>",        -- new terminal
+            move_next = "<A-j>",  -- move the current tab right (rearrange)
+            move_prev = "<A-k>",  -- move the current tab left (rearrange)
+            close = "q",          -- (normal mode) park the terminal via the dock
+        },
+        icons = {              -- single-width Nerd Font glyphs
+            terminal = "",
+            running = "",
+            exited = "",
+            new = "",
+            kill = "",
+        },
+    })
+<
+`cwd` for a NEW terminal: "file" = the current file's directory (a terminal /
+unnamed buffer falls back to the editor cwd), "cwd" = Neovim's cwd, or a
+function returning a directory (e.g. the project root).
+
+                                                       *lvim-term-dock_stack*
+`dock.dock_stack` (default true) — join the shared DOCK STACK as a managed
+consumer: one-visible-per-layout (opening over another consumer in the same
+layout parks it, no overlap), cyclable with `<Leader>n` / `<Leader>p`, killable
+with `<Leader>x`, listed in `<Leader>m` / `:LvimDock`. Set it false to open the
+terminal STANDALONE — the window still takes its size + backdrop from the
+central geometry authority (and honours `dock.force` below), but it does NOT
+join the stack (no cross-consumer cycling, no one-visible enforcement).
+
+                                                            *lvim-term-force*
+`dock.force` — per-layout ANCHORED geometry overrides, deep-merged PER FIELD over
+the global `lvim-utils.config.dock.geometry.<layout>`; an empty `{}` inherits the
+global unchanged. Applies in BOTH dock_stack modes. Each layout may carry:
+    height        ≤ 1 = a fraction of the editor, > 1 = absolute rows
+    height_auto   true → `height` is the MAX (content-fit up to it); false = EXACT
+    backdrop      { enabled, mode, dim = { amount }, darken = { amount } } | false
+    auto_hide     close the surface when a file is opened from the dock
+    keep_focus    keep focus in the dock after opening a file
+`float` ALSO accepts `width` / `width_auto`. `area` and `bottom` are ALWAYS
+full-width — `width` / `width_auto` are ignored there.
+
+==============================================================================
+5. COMMAND                                  *lvim-term-command* *:LvimTerm*
+
+    :LvimTerm                        toggle the current terminal
+    :LvimTerm new [name=build]       spawn another (optionally named)
+    :LvimTerm next | prev            switch tabs
+    :LvimTerm select                 pick a terminal (lvim-ui chooser)
+    :LvimTerm kill                   close the current one (confirm if running)
+    :LvimTerm <sub> float|area|bottom  a layout token anywhere in the args
+
+Lua: >lua
+    local term = require("lvim-term")
+    term.toggle()                 -- drop-down toggle
+    term.new({ name = "build" })  -- named terminal
+    term.next()                   -- next tab
+    term.prev()                   -- previous tab
+    term.kill(id)                 -- kill (confirms while running)
+    term.select()                 -- the lvim-ui chooser
+<
+==============================================================================
+6. TABS & KEYS                                                  *lvim-term-tabs*
+
+The window's WINBAR is the title bar: a `terminal` title block, then (with
+`tabs = true`) one clickable tab per terminal — the active one highlighted, an
+exited one dimmed red — plus a `+` new-tab button. Mouse: click a tab to
+switch, its trailing close glyph to kill THAT terminal, `+` to spawn.
+
+APP-SAFE KEY MODEL. In terminal-INSERT the running PROGRAM owns EVERY key — a
+vim / lazygit / vifm / htop inside keeps `<Esc>` / `q` / `<Leader>` / its own
+`<A-…>` chords, with ZERO interceptions. The single native way out is
+`<C-\><C-n>` (no program uses it), which drops to terminal-NORMAL. There the
+plugin's buffer-local keys apply:
+
+    <A-l>    next terminal tab
+    <A-h>    previous terminal tab
+    <A-n>    new terminal
+    <A-j>    move the current tab right (rearrange; kept for the session)
+    <A-k>    move the current tab left
+    q / <Esc>   PARK the terminal through the shared dock (|lvim-utils-dock|)
+    <Leader>n / <Leader>p   cycle · <Leader>x kill all · <Leader>m dock menu
+
+PARK collapses the layout cleanly, the terminal stays alive on the stack
+(cyclable, listed in the menu), nothing stale is left behind — the same as a
+`:LvimTerm` toggle-off. The tab-nav + park keys are NORMAL-mode ONLY, so the app
+keeps every key in terminal-insert. (`C-c` at a shell prompt is the shell's own
+SIGINT — NOT a close path, so it never drops the terminal from the dock.) The
+right side of the winbar shows a live hint for these keys.
+
+    q        (normal mode) park the terminal via the dock
+
+==============================================================================
+7. SEND API                                                     *lvim-term-send*
+
+Send text INTO a terminal (chansend to its job) with build/REPL ergonomics: >lua
+    local term = require("lvim-term")
+    -- Ctrl-C first (rerun), then reveal the terminal:
+    term.send("make", nil, { interrupt = true, show = true })
+    term.send_file("python")                    -- run the current file
+    term.send_selection(nil, { show = true })   -- run the visual selection
+<
+send({data}, {id}, {opts}) — {id} nil targets the current terminal (spawning
+one if none exists). {opts}: `interrupt` (Ctrl-C first), `clear` (Ctrl-L),
+`show` (reveal after sending), `newline = false` (no trailing newline).
+
+send_file({runner}, {id}, {opts}) — sends `runner <file>` (or the raw path).
+send_selection({id}, {opts}) — sends the last visual selection line by line.
+
+==============================================================================
+8. LAYOUTS                                                   *lvim-term-layouts*
+
+Every layout's size + backdrop come from the ONE central geometry authority
+(`lvim-utils.config.dock.geometry.<layout>` via `dock.slot(layout)`) — lvim-term
+keeps no size of its own. Override a layout for THIS plugin only with
+|lvim-term-force|.
+
+    bottom   a real split docked at the bottom, full-width (default)
+    float    a centred modal float (the only layout that also takes a forced
+             width / width_auto)
+    area     docked IN the lvim-msgarea zone (the message-area / minibuffer
+             space): the terminal window is hosted via msgarea's shared
+             `host_window` primitive — the ZONE owns the height (the shared
+             control-center `ui.size.area.height` setting) and keeps the
+             terminal placed as the zone reflows; lvim-term never computes
+             area geometry itself. Hiding releases the dock and collapses the
+             zone. Without lvim-msgarea (or with its zone disabled), `area`
+             falls back to the bottom dock.
+
+The three layouts are INDEPENDENT. The shared dock keys every entry by
+(id, layout), so the terminal can be docked in float, bottom AND area at the
+SAME time — three parallel display windows, one dock entry per stack, all
+showing the shared current-terminal buffer. `:LvimTerm float` and
+`:LvimTerm bottom` open two separate windows; each toggles on/off on its own,
+and re-issuing a layout that is already open just re-shows that one entry (never
+a duplicate). `q` / `<Esc>` parks ONLY the window it was pressed in (the
+terminal stays visible in the other layouts); `<Leader>x` kills every terminal
+and tears down all of its display windows at once.
+
+==============================================================================
+9. HIGHLIGHTS                                             *lvim-term-highlights*
+
+Self-themed from the lvim-utils palette (rebuilt on colorscheme change):
+
+    LvimTermNormal         the terminal window body
+    LvimTermTitle          the winbar `terminal` title block
+    LvimTermTabActive      the active tab
+    LvimTermTabInactive    an inactive tab
+    LvimTermTabExited      a tab whose shell exited
+    LvimTermTabNew         the `+` new-tab button
+    LvimTermWinbarFill     the winbar fill strip right of the tabs
+
+==============================================================================
+10. HEALTH                                                    *lvim-term-health*
+
+`:checkhealth lvim-term` reports the shell terminals run, the lvim-utils base,
+the optional lvim-ui and lvim-msgarea integrations, a single-width audit of the
+configured glyphs, and the current registry size.
+
+vim:tw=78:ts=8:ft=help:norl:
