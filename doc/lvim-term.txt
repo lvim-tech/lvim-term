@@ -23,9 +23,10 @@ with a result callback): here a terminal is a long-lived shell kept alive while
 hidden, toggled in/out of a shared window, switched via tabs, and SENT commands
 (the builds / REPL workflow).
 
-One shared window is reused: switching terminals swaps its buffer IN PLACE (no
-window churn), the way a drop-down terminal cycles. A dead shell keeps its
-buffer visible (readable final output) unless `close_on_exit` is set; it can be
+One shared display frame is reused per layout: switching terminals shows
+another tab of the SAME frame (the terminals themselves stay alive the whole
+time), the way a drop-down terminal cycles. A dead shell keeps its buffer
+visible (readable final output) unless `close_on_exit` is set; it can be
 respawned in the same slot (id and name stay stable).
 
 ==============================================================================
@@ -58,7 +59,9 @@ Native (vim.pack): >lua
 setup({opts}) merges {opts} into the live config in place and registers
 `:LvimTerm`. The full default config: >lua
     require("lvim-term").setup({
-        layout = "bottom",     -- "float" | "area" | "bottom"
+        layout = "area",       -- "float" | "area" | "bottom"
+        title = "terminal",    -- the border-title text
+        title_pos = "center",  -- "left" | "center" | "right"
         dock = {               -- dock integration (namespaced, uniform with lvim-dependencies)
             dock_stack = true, -- join the shared dock STACK (managed) vs standalone
             force = {          -- per-layout ANCHORED geometry overrides ({} = inherit)
@@ -71,14 +74,15 @@ setup({opts}) merges {opts} into the live config in place and registers
         start_in_insert = true,-- enter terminal-insert when shown
         cwd = "file",          -- "file" | "cwd" | function() -> dir
         close_on_exit = false, -- keep the exited buffer (true = close)
-        tabs = true,           -- the clickable tab bar in the winbar
-        keys = {               -- buffer-local keys inside a terminal
+        tabs = true,           -- the tab bar (false hides it; the keys still switch)
+        keys = {               -- buffer-local keys inside a terminal (normal mode)
             next = "<A-l>",       -- next terminal tab
             prev = "<A-h>",       -- previous terminal tab
             new = "<A-n>",        -- new terminal
             move_next = "<A-j>",  -- move the current tab right (rearrange)
             move_prev = "<A-k>",  -- move the current tab left (rearrange)
-            close = "q",          -- (normal mode) park the terminal via the dock
+            kill = "<A-x>",       -- KILL the current terminal (confirm if running)
+            close = "q",          -- park the terminal via the dock
         },
         icons = {              -- single-width Nerd Font glyphs
             terminal = "",
@@ -136,10 +140,18 @@ Lua: >lua
 ==============================================================================
 6. TABS & KEYS                                                  *lvim-term-tabs*
 
-The window's WINBAR is the title bar: a `terminal` title block, then (with
-`tabs = true`) one clickable tab per terminal — the active one highlighted, an
-exited one dimmed red — plus a `+` new-tab button. Mouse: click a tab to
-switch, its trailing close glyph to kill THAT terminal, `+` to spawn.
+The display goes through the lvim-ui `tabs` presenter (the exact chassis
+control-center rides), in PROVIDER-TAB mode: ONE TAB PER TERMINAL, each tab
+showing its terminal's buffer in the shared content panel. The frame: a
+`terminal` title -> the TAB BAR (with `tabs = true`: one button per terminal —
+the active one highlighted, an exited one red — plus a per-tab `×` kill button
+and a trailing `+` new button) -> the terminal buffer itself -> a FOOTER of key
+chips. The chassis navigation is inherited: `<C-j>` / `<C-k>` walk tab bar ·
+terminal · footer (and `<C-k>` off the top returns to the editor on a docked
+layout), `h` / `l` on the focused tab bar switch terminals live, `<CR>` fires
+the selected bar button, overflowing bars mark hidden items with `❮ ❯`
+chevrons; geometry / borders / backdrop come from the chassis. Mouse: click a
+tab to switch, its `×` to kill THAT terminal, `+` to spawn.
 
 APP-SAFE KEY MODEL. In terminal-INSERT the running PROGRAM owns EVERY key — a
 vim / lazygit / vifm / htop inside keeps `<Esc>` / `q` / `<Leader>` / its own
@@ -150,6 +162,7 @@ plugin's buffer-local keys apply:
     <A-l>    next terminal tab
     <A-h>    previous terminal tab
     <A-n>    new terminal
+    <A-x>    KILL the current terminal (confirm while running)
     <A-j>    move the current tab right (rearrange; kept for the session)
     <A-k>    move the current tab left
     q / <Esc>   PARK the terminal through the shared dock (|lvim-utils-dock|)
@@ -160,9 +173,7 @@ PARK collapses the layout cleanly, the terminal stays alive on the stack
 `:LvimTerm` toggle-off. The tab-nav + park keys are NORMAL-mode ONLY, so the app
 keeps every key in terminal-insert. (`C-c` at a shell prompt is the shell's own
 SIGINT — NOT a close path, so it never drops the terminal from the dock.) The
-right side of the winbar shows a live hint for these keys.
-
-    q        (normal mode) park the terminal via the dock
+frame's footer advertises these keys as clickable chips.
 
 ==============================================================================
 7. SEND API                                                     *lvim-term-send*
@@ -214,15 +225,17 @@ and tears down all of its display windows at once.
 ==============================================================================
 9. HIGHLIGHTS                                             *lvim-term-highlights*
 
-Self-themed from the lvim-utils palette (rebuilt on colorscheme change):
+Self-themed from the lvim-utils palette (rebuilt on colorscheme change). The
+title band, the tab bar and the footer use the chassis' own LvimUi* groups;
+lvim-term adds only the terminal body and the red/green tab accents:
 
-    LvimTermNormal         the terminal window body
-    LvimTermTitle          the winbar `terminal` title block
-    LvimTermTabActive      the active tab
-    LvimTermTabInactive    an inactive tab
-    LvimTermTabExited      a tab whose shell exited
-    LvimTermTabNew         the `+` new-tab button
-    LvimTermWinbarFill     the winbar fill strip right of the tabs
+    LvimTermNormal            the terminal window body
+    LvimTermTabExited         an exited terminal's tab (red)
+    LvimTermTabExitedActive   the same, active/hover (soft red block)
+    LvimTermKill              the per-tab `×` kill button (red block)
+    LvimTermKillActive        the same, active/hover (deeper red block)
+    LvimTermTabNew            the `+` new-terminal button (green)
+    LvimTermTabNewActive      the same, active/hover (soft green block)
 
 ==============================================================================
 10. HEALTH                                                    *lvim-term-health*

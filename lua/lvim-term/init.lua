@@ -1,7 +1,7 @@
 -- lvim-term: persistent, named, toggleable terminals with betterTerm-style tabs.
 -- Distinct from lvim-shell (one-shot TUI-app launchers): here a terminal is a long-lived shell
--- kept alive while hidden, toggled in/out of a drop-down window, switched via a clickable tab bar,
--- and SENT commands (the builds/REPLs workflow). Public API + a single `:LvimTerm` verb.
+-- kept alive while hidden, toggled in/out of a lvim-ui surface frame, switched via its header tab
+-- bar, and SENT commands (the builds/REPLs workflow). Public API + a single `:LvimTerm` verb.
 --
 --   :LvimTerm                       -- toggle the current terminal
 --   :LvimTerm new [name=build]      -- spawn another
@@ -65,11 +65,17 @@ function M.kill(id)
         return
     end
     local function do_kill()
+        -- Hand the display OFF the dying buffer first: a frame float still showing it would be closed
+        -- by the buffer delete, tearing the whole frame down. The detach steps each affected frame to
+        -- the NEXT terminal in place (layout-correct), so after the kill only a repaint is needed.
+        ui.detach(id)
         manager.kill(id)
         if manager.count() == 0 then
             ui.hide()
+        elseif ui.is_shown() then
+            ui.refresh() -- the open frame(s) already display the neighbour; drop the dead tab from the bar
         else
-            ui.show(manager.current())
+            ui.show(manager.current()) -- killed from the command with no frame open: reveal the next one
         end
     end
     if term.job_id and not term.exited then

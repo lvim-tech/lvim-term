@@ -29,13 +29,15 @@
 
 ---@class LvimTermConfig
 ---@field layout         "float"|"area"|"bottom"  Default layout a terminal shows in
+---@field title          string                   The frame's border-title text (default "terminal")
+---@field title_pos      "left"|"center"|"right"  Border-title alignment (default "center")
 ---@field dock           LvimTermDock             Dock integration (dock_stack + per-layout force overrides)
 ---@field shell          string?                  Command to run (nil = &shell)
 ---@field start_in_insert boolean                 Enter insert mode when a terminal is shown
 ---@field cwd            "file"|"cwd"|fun(): string  New-terminal working directory
 ---@field close_on_exit  boolean                  Close the window when the shell exits (else keep the exited buffer)
----@field tabs           boolean                  Show the terminal tab bar (one clickable tab per terminal) in the winbar
----@field keys           table                    Buffer-local keys inside a terminal: next / prev / new / move tabs + normal-mode close
+---@field tabs           boolean                  Show the terminal tab bar (one button per terminal) in the frame's header band
+---@field keys           table                    Buffer-local normal-mode keys inside a terminal: next / prev / new / move tabs + close
 ---@field icons          table                    Nerd Font glyphs (terminal / running / exited / new-tab / separators)
 
 ---@type LvimTermConfig
@@ -44,7 +46,11 @@ return {
     -- each layout (bottom rows, float fractions) + the backdrop live centrally in
     -- lvim-utils.config.dock.geometry — resolved via `require("lvim-utils.dock").slot(layout)` — so
     -- lvim-term keeps no size of its own (every dock consumer shares the one geometry authority).
-    layout = "bottom",
+    layout = "area",
+    -- The frame's border-title: its TEXT and alignment ("left" | "center" | "right"). The fronting
+    -- glyph is `icons.terminal`. Centered by default (as the other lvim-tech panels).
+    title = "terminal",
+    title_pos = "center",
     -- Dock integration, namespaced under `dock.*` (uniform with lvim-dependencies' `config.dock`).
     dock = {
         -- true = full dock-STACK consumer (managed: cyclable <Leader>n/p/x/m, :LvimDock,
@@ -71,21 +77,23 @@ return {
     -- When the shell process exits, close its window (true) or keep the exited buffer visible so
     -- you can read the final output (false).
     close_on_exit = false,
-    -- Show the terminal TAB BAR (one clickable tab per terminal, active one highlighted, a `+`
-    -- new-tab button) in the terminal window's winbar — the betterTerm-style tabs.
+    -- Show the terminal TAB BAR (one button per terminal, active one highlighted, a per-tab kill
+    -- glyph, a `+` new-tab button) as the frame's header band — the betterTerm-style tabs on the
+    -- lvim-ui surface chassis (overflow chevrons come free from its ui.bar).
     tabs = true,
-    -- Buffer-local keys inside a terminal. The tab keys (cycle / new / move) are Alt-based and bound in
-    -- BOTH terminal and normal mode so they never clash with shell input. `close` is bound in NORMAL
-    -- mode ONLY (reach it with `<C-\><C-n>`): it parks the terminal through the dock — the same
-    -- collapse/park as a `:LvimTerm` toggle-off. It is normal-mode-only because in terminal-insert the
-    -- shell owns `q` / `<Esc>` (a vim / fzf / REPL inside the terminal needs them). A full KILL of every
-    -- terminal stays on the dock's `<Leader>x`.
+    -- Buffer-local keys inside a terminal — ALL bound in NORMAL mode ONLY (reach it with the native
+    -- `<C-\><C-n>` gateway): in terminal-insert the running PROGRAM owns every key (a vim / fzf /
+    -- lazygit / REPL inside the terminal legitimately uses the Alt chords, `q` and `<Esc>`), so no
+    -- key is ever intercepted there. `close` parks the terminal through the dock — the same
+    -- collapse/park as a `:LvimTerm` toggle-off. A full KILL of every terminal stays on the dock's
+    -- `<Leader>x`.
     keys = {
         next = "<A-l>", -- next terminal tab
         prev = "<A-h>", -- previous terminal tab
         new = "<A-n>", -- new terminal
         move_next = "<A-j>", -- move the current tab forward / right (rearrange)
         move_prev = "<A-k>", -- move the current tab back / left (rearrange)
+        kill = "<A-x>", -- (normal mode) KILL the current terminal (confirm if running)
         close = "q", -- (normal mode) park the terminal via the dock — collapse, keep it cyclable
     },
     -- Single-width Nerd Font glyphs (real literal glyphs; override with your own).

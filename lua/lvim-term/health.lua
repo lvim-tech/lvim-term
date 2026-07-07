@@ -1,7 +1,8 @@
 -- lvim-term: :checkhealth lvim-term.
--- Reports the shell that terminals run, the lvim-utils base (palette/theming), and the OPTIONAL
--- integrations — lvim-ui (kill-confirm + select chooser) and lvim-msgarea (the area-layout zone
--- dock); all degrade gracefully when absent. Read-only.
+-- Reports the shell that terminals run, the lvim-utils base (palette/theming + the dock manager),
+-- lvim-ui (the REQUIRED surface chassis every display frame rides — plus kill-confirm + select),
+-- and lvim-msgarea (hosts the `area` layout's zone; without it the surface grows cmdheight itself).
+-- Read-only.
 --
 ---@module "lvim-term.health"
 

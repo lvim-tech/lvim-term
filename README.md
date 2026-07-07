@@ -48,15 +48,24 @@ require("lvim-term").setup({})
 :LvimTerm <sub> float|area|bottom  " a layout token anywhere in the args
 ```
 
-The window's **winbar** is the title bar: a `terminal` title block, then (with `tabs = true`) one
-clickable tab per terminal — click a tab to switch, its trailing `×` to kill that terminal, the `+`
-button to spawn a new one; the right side shows a live **hint** for the keys below.
+The display goes through the canonical **lvim-ui `tabs` presenter** (the exact call shape
+lvim-control-center uses), in its provider-tab mode: **one tab per terminal**, each tab's provider
+showing that terminal's buffer in the shared content panel. The frame is a `terminal` title → the
+**tab bar** (with `tabs = true`: the active tab highlighted, an exited one red, a per-tab `×` to kill
+that terminal, a trailing `+` to spawn a new one) → the **terminal itself** → a **footer** of key
+chips. The chassis navigation comes inherited, not hand-rolled: `<C-j>` / `<C-k>` walk tab bar ·
+terminal · footer (and `<C-k>` off the top returns to the editor on a docked layout), `h` / `l` on
+the focused tab bar switch terminals live, `<CR>` fires the selected bar button, and overflowing
+bars mark their hidden items with `❮ ❯` chevrons. Geometry, borders and the backdrop all come from
+the chassis (the central `lvim-utils.config.dock.geometry` slot) — lvim-term hand-rolls no window of
+its own.
 
 **App-safe key model.** In **terminal-INSERT the running program owns EVERY key** — a `vim` / `lazygit`
 / `vifm` / `htop` inside the terminal keeps `<Esc>` / `q` / `<Leader>` / its own `<A-…>` chords, with
 **zero interceptions** from the plugin. The single, native way out is **`<C-\><C-n>`** (which no
 program uses), which drops to **terminal-NORMAL**. There the plugin's keys apply: the tab keys
-**`<A-l>`** next · **`<A-h>`** prev · **`<A-n>`** new · **`<A-j>`** / **`<A-k>`** move the current tab;
+**`<A-l>`** next · **`<A-h>`** prev · **`<A-n>`** new · **`<A-x>`** kill the current terminal
+(confirm while running) · **`<A-j>`** / **`<A-k>`** move the current tab;
 **`q`** or **`<Esc>`** PARK the terminal through the shared dock (the layout collapses cleanly, the
 terminal stays cyclable, nothing stale is left behind — the same as a `:LvimTerm` toggle-off); and the
 dock's **`<Leader>n`** / **`<Leader>p`** cycle, **`<Leader>x`** kills every terminal, **`<Leader>m`** is
@@ -105,7 +114,9 @@ layouts); `<Leader>x` kills every terminal and tears down all of its display win
 
 ```lua
 require("lvim-term").setup({
-    layout = "bottom", -- "float" | "area" | "bottom"
+    layout = "area", -- "float" | "area" | "bottom"
+    title = "terminal", -- the border-title text
+    title_pos = "center", -- "left" | "center" | "right"
     -- Dock integration, namespaced under `dock.*` (uniform with lvim-dependencies' `config.dock`).
     dock = {
         -- true = full dock-STACK consumer (managed: cyclable <Leader>n/p/x/m, :LvimDock, one-visible-
@@ -123,14 +134,15 @@ require("lvim-term").setup({
     start_in_insert = true, -- enter terminal-insert when shown
     cwd = "file", -- "file" | "cwd" | function() -> dir
     close_on_exit = false, -- keep the exited buffer (true = close the window)
-    tabs = true, -- show the clickable tab bar in the winbar
-    keys = { -- buffer-local keys inside a terminal (tab keys: terminal + normal mode)
+    tabs = true, -- show the tab bar (one button per terminal; false hides the bar, the keys still switch)
+    keys = { -- buffer-local keys inside a terminal — ALL normal-mode only
         next = "<A-l>", -- next terminal tab
         prev = "<A-h>", -- previous terminal tab
         new = "<A-n>", -- new terminal
         move_next = "<A-j>", -- move the current tab right (rearrange)
         move_prev = "<A-k>", -- move the current tab left (rearrange)
-        close = "q", -- (normal mode) park the terminal via the dock
+        kill = "<A-x>", -- KILL the current terminal (confirm if running)
+        close = "q", -- park the terminal via the dock
     },
     icons = { -- single-width Nerd Font glyphs
         terminal = "",
@@ -144,13 +156,14 @@ require("lvim-term").setup({
 
 ## Highlights
 
-Self-themed from lvim-utils, overwritable by a colorscheme or your own `setup`:
+Self-themed from lvim-utils, overwritable by a colorscheme or your own `setup`. The title band, the
+tab bar and the footer use the chassis' own `LvimUi*` groups; lvim-term adds only the groups the
+chassis has no concept of — the terminal body and the red/green tab accents:
 
 - `LvimTermNormal` — the terminal window body.
-- `LvimTermTitle` — the winbar `terminal` title block.
-- `LvimTermTabActive` / `LvimTermTabInactive` / `LvimTermTabExited` — the tab states.
-- `LvimTermTabNew` — the `+` new-tab button.
-- `LvimTermWinbarFill` — the winbar fill strip.
+- `LvimTermTabExited` / `LvimTermTabExitedActive` — an exited terminal's tab (red).
+- `LvimTermKill` / `LvimTermKillActive` — the per-tab `×` kill button (red block, deepens on hover).
+- `LvimTermTabNew` / `LvimTermTabNewActive` — the `+` new-terminal button (green).
 
 ## Health
 
