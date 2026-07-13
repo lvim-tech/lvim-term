@@ -86,6 +86,19 @@ term.send_file("python") -- run the current file
 term.send_selection(nil, { show = true }) -- run the visual selection
 ```
 
+## Adopting another plugin's terminal
+
+```lua
+-- Adopt a live terminal buffer this plugin did NOT spawn — e.g. a running lvim-tasks task's output —
+-- as a terminal TAB. That is what makes such an output INTERACTIVE: insert mode types straight into the
+-- running program (a watch-mode test runner waiting for a keypress, a REPL, anything reading stdin).
+-- lvim-term only VIEWS it: the owner keeps the buffer and the job, closing the tab merely DETACHES it,
+-- and it is never respawned.
+require("lvim-term").adopt({ bufnr = task.bufnr, job_id = task.job_id, name = "npm test" })
+```
+
+In lvim-tasks this is bound to `t` in the task panel (or the `terminal` footer button).
+
 ## Layouts
 
 Every layout's size + backdrop come from the ONE central geometry authority

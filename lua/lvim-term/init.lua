@@ -45,6 +45,22 @@ function M.new(opts, layout)
     return term
 end
 
+--- ADOPT another plugin's live terminal buffer as a terminal TAB and show it — the seam that turns a
+--- read-only output pane into a real INTERACTIVE terminal (lvim-tasks hands over a running task's output
+--- so a watch-mode runner / a REPL / anything reading stdin can be typed into). lvim-term only VIEWS it:
+--- the owner keeps the buffer and the job, and closing the tab merely detaches it.
+---@param opts { bufnr: integer, job_id: integer?, name: string?, cwd: string? }
+---@param layout ("float"|"area"|"bottom")?
+---@return LvimTerminal?
+function M.adopt(opts, layout)
+    local term = manager.adopt(opts)
+    if not term then
+        return nil
+    end
+    ui.show(term.id, layout)
+    return term
+end
+
 --- Switch to the next / previous terminal tab.
 function M.next()
     ui.cycle(1)

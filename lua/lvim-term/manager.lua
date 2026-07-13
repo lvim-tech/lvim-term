@@ -23,6 +23,8 @@ local M = {}
 ---@field cwd    string?
 ---@field exited boolean
 ---@field last_mode "i"|"n"?  Remembered mode when hidden (drop-down insert feel)
+---@field external? boolean   ADOPTED (see M.adopt): the buffer + job belong to another plugin, so
+---                           lvim-term only VIEWS it — it never respawns or destroys it.
 
 ---@type table<integer, LvimTerminal>
 local terms = {}
@@ -119,6 +121,42 @@ function M.spawn(opts)
     return term
 end
 
+--- ADOPT a terminal buffer this plugin did NOT spawn — another plugin's live job (a lvim-tasks task's
+--- output) — as a terminal TAB, so it gets the terminal UI: the dock, the tab bar, and above all a real
+--- INTERACTIVE window (insert mode types straight into the job — a watch-mode test runner waiting for a
+--- keypress, a REPL, a program reading stdin). lvim-term is only a VIEWER of it: the owner keeps the
+--- buffer and the job (see `kill`, which merely detaches an adopted terminal, and `respawn`, which refuses
+--- one — relaunching the configured SHELL in someone else's slot would be nonsense).
+--- Idempotent: adopting the same buffer twice returns the existing entry.
+---@param opts { bufnr: integer, job_id: integer?, name: string?, cwd: string? }
+---@return LvimTerminal?
+function M.adopt(opts)
+    if not (opts and opts.bufnr and api.nvim_buf_is_valid(opts.bufnr)) then
+        return nil
+    end
+    for _, t in pairs(terms) do
+        if t.bufnr == opts.bufnr then
+            current_id = t.id
+            return t
+        end
+    end
+    _next_id = _next_id + 1
+    ---@type LvimTerminal
+    local term = {
+        id = _next_id,
+        name = opts.name or ("term " .. _next_id),
+        cwd = opts.cwd,
+        bufnr = opts.bufnr,
+        job_id = opts.job_id,
+        exited = opts.job_id == nil,
+        external = true,
+    }
+    terms[term.id] = term
+    order[#order + 1] = term.id
+    current_id = term.id
+    return term
+end
+
 --- Respawn a dead terminal in the same slot (id/name stay stable). No-op if still alive.
 ---@param id integer
 ---@return boolean
@@ -126,6 +164,9 @@ function M.respawn(id)
     local term = terms[id]
     if not term then
         return false
+    end
+    if term.external then
+        return false -- an adopted buffer belongs to another plugin: never relaunch a shell into it
     end
     if term.job_id and not term.exited then
         return false
@@ -144,11 +185,15 @@ function M.kill(id)
     if not term then
         return false
     end
-    if term.job_id then
-        pcall(fn.jobstop, term.job_id)
-    end
-    if term.bufnr and api.nvim_buf_is_valid(term.bufnr) then
-        pcall(api.nvim_buf_delete, term.bufnr, { force = true })
+    -- An ADOPTED terminal is only VIEWED here: closing its tab DETACHES it (the owning plugin keeps its
+    -- job and buffer — killing them would silently cancel someone else's task).
+    if not term.external then
+        if term.job_id then
+            pcall(fn.jobstop, term.job_id)
+        end
+        if term.bufnr and api.nvim_buf_is_valid(term.bufnr) then
+            pcall(api.nvim_buf_delete, term.bufnr, { force = true })
+        end
     end
     terms[id] = nil
     order_remove(id)
@@ -168,6 +213,20 @@ end
 --- Terminal ids in the current TAB ORDER (rearrangeable; not id-sorted).
 ---@return integer[]
 function M.ids()
+    -- Prune ADOPTED terminals whose buffer the OWNER destroyed (a lvim-tasks task restarted or was
+    -- disposed): lvim-term does not own that buffer, so it can vanish under us at any time, and a tab
+    -- pointing at a dead buffer would render as a broken terminal. Terminals lvim-term spawned itself
+    -- keep their slot even when the shell exits — those are respawnable, an adopted one is not.
+    for _, id in ipairs(vim.deepcopy(order)) do
+        local t = terms[id]
+        if t and t.external and not (t.bufnr and api.nvim_buf_is_valid(t.bufnr)) then
+            terms[id] = nil
+            order_remove(id)
+            if current_id == id then
+                current_id = order[#order]
+            end
+        end
+    end
     return vim.deepcopy(order)
 end
 
