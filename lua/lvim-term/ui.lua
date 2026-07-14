@@ -174,6 +174,8 @@ end
 --- terminal-insert entirely (zero interceptions there). The dock's own `<Leader>n/p/x/m` likewise
 --- only apply in terminal-normal via the dock leader owner.
 ---
+local show_help -- forward decl (bind_keys binds it before the window that opens it is defined)
+
 --- Bound keys: the tab keys (next / prev / new / move — all landing in the ui.tabs reconcile, so the
 --- tab bar and the shown terminal move together), the PARK keys (`config.keys.close` + `<Esc>`, both
 --- routing through `M.hide` for the CURRENT window's layout only — the same collapse/park as a
@@ -216,6 +218,11 @@ local function bind_keys(buf)
     map(k.kill, function()
         require("lvim-term").kill() -- KILL the current terminal (init's confirm flow); circular → inline
     end)
+    map(k.help, show_help)
+    -- The terminal buffer is HOSTED (swapped into the chassis panel window), so the chassis never maps it and
+    -- cannot own the prefix of a chord bound here. `surface.own_chords` is the shared seam that does: without
+    -- it a `g?` typed at human speed falls through to the builtin `g` once `timeoutlen` expires.
+    surface.own_chords(buf, { k.help })
     for _, lhs in ipairs({ k.close, "<Esc>" }) do
         if lhs and lhs ~= "" then
             vim.keymap.set("n", lhs, function()
@@ -384,6 +391,40 @@ local function term_provider(p, tid)
     }
 end
 
+-- ── the help window (the canonical cheatsheet) ───────────────────────────────
+
+-- Key id → description, in display order. Built from the LIVE `config.keys` (an unset key drops its row).
+---@type { [1]: string, [2]: string }[]
+local HELP = {
+    { "next", "next terminal tab" },
+    { "prev", "previous terminal tab" },
+    { "new", "new terminal" },
+    { "move_next", "move this tab forward" },
+    { "move_prev", "move this tab back" },
+    { "kill", "KILL this terminal (confirm if running)" },
+    { "close", "park the terminal (collapse, keep it cyclable)" },
+    { "help", "this help" },
+}
+
+--- The terminal panel's keymap cheatsheet — the shared `lvim-ui.help` component owns the rows, the striping,
+--- the colours and the window; this only supplies the plugin's LIVE keys. Every key it lists is a
+--- terminal-NORMAL key (`<C-\><C-n>` first): in terminal-insert the running program owns the keyboard.
+function show_help()
+    local k = config.keys or {}
+    local items = {}
+    for _, e in ipairs(HELP) do
+        local lhs = k[e[1]]
+        if lhs and lhs ~= "" then
+            items[#items + 1] = { lhs, e[2] }
+        end
+    end
+    require("lvim-ui").help({
+        title = "Terminal keymaps",
+        items = items,
+        close_keys = { "q", "<Esc>", k.help or "g?" },
+    })
+end
+
 --- Build slot `p`'s footer chips (the `ui.tabs` `footer_hints` LIST form): the terminal's normal-mode
 --- keys surfaced as clickable, label-only chips (`no_hotkey` — the real keymaps live buffer-local on
 --- the terminal buffer, and registering multi-char labels would create mapping prefixes), grouped by
@@ -444,6 +485,14 @@ local function footer_chips(p)
             end),
         },
         sep(),
+        {
+            -- The terminal's normal-mode keys are not discoverable from the shell, so the bar says where the
+            -- cheatsheet is (the real `g?` is bound on the terminal buffer by `bind_keys`).
+            key = lbl(k.help),
+            label = "help",
+            no_hotkey = true,
+            run = deferred(show_help),
+        },
         {
             key = (lbl(k.close) ~= "" and lbl(k.close) or "q") .. "/Esc",
             label = "park",

@@ -56,7 +56,9 @@ that terminal, a trailing `+` to spawn a new one) → the **terminal itself** �
 chips. The chassis navigation comes inherited, not hand-rolled: `<C-j>` / `<C-k>` walk tab bar ·
 terminal · footer (and `<C-k>` off the top returns to the editor on a docked layout), `h` / `l` on
 the focused tab bar switch terminals live, `<CR>` fires the selected bar button, and overflowing
-bars mark their hidden items with `❮ ❯` chevrons. Geometry, borders and the backdrop all come from
+bars mark their hidden items with `❮ ❯` chevrons. The footer's **`help` chip** (`g?`, in terminal-NORMAL
+mode) opens the keymap CHEATSHEET — every key in `keys` below, built from the live config, so a rebind shows
+up in it. Geometry, borders and the backdrop all come from
 the chassis (the central `lvim-utils.config.dock.geometry` slot) — lvim-term hand-rolls no window of
 its own.
 
@@ -149,6 +151,7 @@ require("lvim-term").setup({
     close_on_exit = false, -- keep the exited buffer (true = close the window)
     tabs = true, -- show the tab bar (one button per terminal; false hides the bar, the keys still switch)
     keys = { -- buffer-local keys inside a terminal — ALL normal-mode only
+        help = "g?", -- the keymap CHEATSHEET (also a `help` chip on the footer bar)
         next = "<A-l>", -- next terminal tab
         prev = "<A-h>", -- previous terminal tab
         new = "<A-n>", -- new terminal

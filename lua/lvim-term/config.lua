@@ -88,6 +88,7 @@ return {
     -- collapse/park as a `:LvimTerm` toggle-off. A full KILL of every terminal stays on the dock's
     -- `<Leader>x`.
     keys = {
+        help = "g?", -- (normal mode) the keymap CHEATSHEET — the set-wide chord
         next = "<A-l>", -- next terminal tab
         prev = "<A-h>", -- previous terminal tab
         new = "<A-n>", -- new terminal

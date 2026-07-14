@@ -76,6 +76,7 @@ setup({opts}) merges {opts} into the live config in place and registers
         close_on_exit = false, -- keep the exited buffer (true = close)
         tabs = true,           -- the tab bar (false hides it; the keys still switch)
         keys = {               -- buffer-local keys inside a terminal (normal mode)
+            help = "g?",          -- the keymap CHEATSHEET (a `help` footer chip)
             next = "<A-l>",       -- next terminal tab
             prev = "<A-h>",       -- previous terminal tab
             new = "<A-n>",        -- new terminal
