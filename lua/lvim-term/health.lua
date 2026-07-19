@@ -45,9 +45,11 @@ function M.check()
     end
 
     if pcall(require, "lvim-ui") then
-        health.ok("lvim-ui found (kill-confirm + select chooser)")
+        health.ok("lvim-ui found (surface chassis + kill-confirm + select chooser)")
     else
-        health.info("lvim-ui not found — kill skips the confirm and select is disabled (tabs still work)")
+        -- lvim-term.ui hard-requires lvim-ui + lvim-ui.surface at module top, so without it
+        -- require("lvim-term") itself errors — no display, no tabs, nothing (NOT a soft degrade).
+        health.error("lvim-ui not found — lvim-term cannot open any display frame")
     end
 
     -- The `area` layout docks in the lvim-msgarea zone (which owns the dock height); without it (or
@@ -64,7 +66,7 @@ function M.check()
         health.info("lvim-msgarea not found — the area layout falls back to the bottom dock")
     end
 
-    -- Verify the configured glyphs are single-width (the tab bar / winbar rely on it).
+    -- Verify the configured glyphs are single-width (the tab bar / chooser rely on it).
     local bad = {}
     for name, g in pairs(config.icons or {}) do
         if vim.fn.strdisplaywidth(g) ~= 1 then

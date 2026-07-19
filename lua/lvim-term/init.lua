@@ -85,6 +85,12 @@ function M.kill(id)
         -- by the buffer delete, tearing the whole frame down. The detach steps each affected frame to
         -- the NEXT terminal in place (layout-correct), so after the kill only a repaint is needed.
         ui.detach(id)
+        -- An ADOPTED terminal keeps its buffer (the owner's), so manager.kill only detaches it — but
+        -- show_term_in stamped lvim-term's buffer-local maps + filetype on that foreign buffer. Strip
+        -- them here so the owner's own window is not left carrying lvim-term's park/kill keymaps.
+        if term.external then
+            ui.unbind_keys(term.bufnr)
+        end
         manager.kill(id)
         if manager.count() == 0 then
             ui.hide()
@@ -98,8 +104,10 @@ function M.kill(id)
         local ok, lvim_ui = pcall(require, "lvim-ui")
         if ok and lvim_ui.confirm then
             lvim_ui.confirm({
-                title = "Kill terminal",
-                message = ("Kill %q (still running)?"):format(term.name),
+                -- lvim-ui.confirm renders `opts.title or opts.prompt` as the question — it has NO
+                -- `message` field, so the terminal name must live in the title itself (else the user
+                -- confirms blind when several terminals are open).
+                title = ("Kill %q (still running)?"):format(term.name),
                 callback = function(yes)
                     if yes then
                         do_kill()
@@ -226,13 +234,36 @@ function M.setup(opts)
     hl.setup()
     hl.bind(highlights.build)
 
-    -- A terminal exiting (or being renamed) repaints the visible tab bar.
+    -- A terminal exiting (or being renamed) repaints the visible tab bar. When `close_on_exit` is set,
+    -- a shell that has just exited also CLOSES its display: the only terminal parks every frame (ui.hide),
+    -- otherwise each frame showing it steps to the neighbour (ui.detach) and the dead terminal is dropped
+    -- from the registry — matching the config doc's "close the window when the shell exits (else keep the
+    -- exited buffer)". An exit while no frame is open removes the terminal silently (no frame is popped).
     api.nvim_create_autocmd("User", {
         pattern = "LvimTermChanged",
-        callback = function()
+        group = api.nvim_create_augroup("LvimTermChanged", { clear = true }),
+        callback = function(event)
+            local data = event.data
+            if config.close_on_exit and type(data) == "table" and data.id then
+                local term = manager.get(data.id)
+                if term and term.exited then
+                    vim.schedule(function()
+                        if ui.is_shown() then
+                            if manager.count() <= 1 then
+                                ui.hide()
+                            else
+                                ui.detach(data.id)
+                            end
+                        end
+                        manager.kill(data.id)
+                        ui.refresh()
+                    end)
+                    return
+                end
+            end
             vim.schedule(ui.refresh)
         end,
-        desc = "lvim-term: refresh the tab bar on a terminal change",
+        desc = "lvim-term: refresh the tab bar on a terminal change (close the frame on exit when close_on_exit)",
     })
 
     api.nvim_create_user_command("LvimTerm", function(cmd)

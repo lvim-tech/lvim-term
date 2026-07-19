@@ -69,7 +69,12 @@ function M.send_file(runner, id, opts)
     if file == "" then
         return false
     end
-    local cmd = (runner and runner ~= "") and (runner .. " " .. fn.fnameescape(file)) or fn.fnameescape(file)
+    -- The composed string is executed by the SHELL (chansend to the terminal job), so the path must
+    -- be SHELL-quoted, not vim-cmdline-escaped: `fnameescape` leaves `$(…)`, `;`, `&`, backticks
+    -- unescaped (a path like `demo$(uname).py` would run the substitution / `foo;rm.py` would split
+    -- the command) while adding backslashes the shell does not want. `shellescape` is the right domain.
+    local quoted = fn.shellescape(file)
+    local cmd = (runner and runner ~= "") and (runner .. " " .. quoted) or quoted
     return M.send(cmd, id, opts)
 end
 

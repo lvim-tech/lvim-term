@@ -195,10 +195,18 @@ function M.kill(id)
             pcall(api.nvim_buf_delete, term.bufnr, { force = true })
         end
     end
+    -- Fall the current selection to the killed tab's NEIGHBOUR (the same terminal a visible frame's
+    -- ui.detach steps to), computed BEFORE the removal — nil when this was the only terminal. Using
+    -- the neighbour keeps a frame-less `:LvimTerm kill` consistent with the in-frame detach instead
+    -- of jumping to the LAST tab.
+    local next_current = M.neighbour(id, 1)
+    if next_current == id then
+        next_current = nil
+    end
     terms[id] = nil
     order_remove(id)
     if current_id == id then
-        current_id = order[#order]
+        current_id = next_current
     end
     return true
 end
@@ -217,7 +225,9 @@ function M.ids()
     -- disposed): lvim-term does not own that buffer, so it can vanish under us at any time, and a tab
     -- pointing at a dead buffer would render as a broken terminal. Terminals lvim-term spawned itself
     -- keep their slot even when the shell exits — those are respawnable, an adopted one is not.
-    for _, id in ipairs(vim.deepcopy(order)) do
+    -- `order` is a flat list of integer ids, so a shallow copy is the same safety as a deepcopy at a
+    -- fraction of the cost (this runs on the hottest path — all()/count()/neighbour()/tabsig()).
+    for _, id in ipairs(vim.list_slice(order)) do
         local t = terms[id]
         if t and t.external and not (t.bufnr and api.nvim_buf_is_valid(t.bufnr)) then
             terms[id] = nil
@@ -227,7 +237,7 @@ function M.ids()
             end
         end
     end
-    return vim.deepcopy(order)
+    return vim.list_slice(order)
 end
 
 --- Move terminal `id` one slot left (-1) or right (+1) in the tab order (clamped, no wrap so a

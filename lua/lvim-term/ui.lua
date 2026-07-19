@@ -251,6 +251,45 @@ local function bind_keys(buf)
     end
 end
 
+--- Strip every buffer-local map + the filetype `bind_keys` / `show_term_in` stamped on `buf` — the
+--- teardown for an ADOPTED terminal, whose buffer belongs to another plugin (`manager.kill` only
+--- DETACHES an external terminal, leaving its buffer alive). Without this the owner's own window would
+--- keep lvim-term's park/kill/tab maps and the `lvim-term` filetype forever (pressing `q`/`<Esc>` there
+--- would park an unrelated lvim-term frame, `<A-x>` would pop its kill flow). Deletes ONLY what WE set
+--- (guarded by the `lvim_term_bound` / `lvim_term_ft` flags); an OWNED terminal deletes its whole buffer
+--- on kill, so this is never called for one.
+---@param buf integer?
+function M.unbind_keys(buf)
+    if not (buf and api.nvim_buf_is_valid(buf) and vim.b[buf].lvim_term_bound) then
+        return
+    end
+    local k = config.keys or {}
+    local del = function(lhs)
+        if type(lhs) == "string" and lhs ~= "" then
+            pcall(vim.keymap.del, "n", lhs, { buffer = buf })
+        end
+    end
+    for _, lhs in ipairs({ k.next, k.prev, k.new, k.move_next, k.move_prev, k.kill, k.help, k.close, "<Esc>" }) do
+        del(lhs)
+    end
+    -- The chord PREFIX `surface.own_chords` mapped for the help chord (`g` for `g?`).
+    if type(k.help) == "string" and #k.help > 1 then
+        del(k.help:match("^(<[^>]+>)") or k.help:sub(1, 1))
+    end
+    for _, sk in ipairs({ "sector_next", "sector_prev" }) do
+        for _, lhs in ipairs(keylist(surface.key(sk))) do
+            del(lhs)
+        end
+    end
+    vim.b[buf].lvim_term_bound = nil
+    if vim.b[buf].lvim_term_ft then
+        vim.b[buf].lvim_term_ft = nil
+        if vim.bo[buf].filetype == "lvim-term" then
+            vim.bo[buf].filetype = ""
+        end
+    end
+end
+
 --- Put `term`'s buffer into slot `p`'s content panel window (the tab-switch buffer swap) and re-assert
 --- the window chrome. The tab's `update` provider owns pan.win, so this is the ONE place the displayed
 --- buffer changes; it never focuses (focus is a separate, explicit step — `update` also re-fires on
@@ -268,9 +307,11 @@ local function show_term_in(p, pan, term)
     end
     bind_keys(buf)
     -- Name the buffer's filetype so ft-scoped rules (user autocmds, the cursor module's lists) can
-    -- target it. NOT registered for cursor hiding — a terminal needs its real cursor.
+    -- target it. NOT registered for cursor hiding — a terminal needs its real cursor. Record that WE
+    -- set it (in a buffer flag) so `unbind_keys` restores it ONLY for an adopted buffer we stamped.
     if vim.bo[buf].filetype == "" then
         vim.bo[buf].filetype = "lvim-term"
+        vim.b[buf].lvim_term_ft = true
     end
     if api.nvim_win_get_buf(pan.win) ~= buf then
         api.nvim_win_set_buf(pan.win, buf)
