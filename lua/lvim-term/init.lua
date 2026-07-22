@@ -26,12 +26,30 @@ local M = {}
 ---@type boolean  one-time setup done
 local registered = false
 
+---@type boolean  the LvimTerm* groups are bound (once)
+local hl_bound = false
+
+--- Bind the LvimTerm* highlight groups from the palette — ONCE. Called by setup() AND by every
+--- public entry that can be reached WITHOUT setup (e.g. `adopt`/`toggle` from lvim-tasks' terminal
+--- button): without this, an adopted terminal's tab bar (kill `×` / new `+` boxes) rendered
+--- uncoloured because the groups were never applied.
+---@return nil
+local function ensure_highlights()
+    if hl_bound then
+        return
+    end
+    hl_bound = true
+    hl.setup()
+    hl.bind(highlights.build)
+end
+
 -- ── public API ────────────────────────────────────────────────────────────
 
 --- Toggle the current (or a given) terminal in `layout`.
 ---@param id integer?
 ---@param layout ("float"|"area"|"bottom")?
 function M.toggle(id, layout)
+    ensure_highlights()
     ui.toggle(id, layout)
 end
 
@@ -53,6 +71,7 @@ end
 ---@param layout ("float"|"area"|"bottom")?
 ---@return LvimTerminal?
 function M.adopt(opts, layout)
+    ensure_highlights()
     local term = manager.adopt(opts)
     if not term then
         return nil
@@ -226,13 +245,11 @@ function M.setup(opts)
     if opts then
         merge(config, opts)
     end
+    ensure_highlights()
     if registered then
         return
     end
     registered = true
-
-    hl.setup()
-    hl.bind(highlights.build)
 
     -- A terminal exiting (or being renamed) repaints the visible tab bar. When `close_on_exit` is set,
     -- a shell that has just exited also CLOSES its display: the only terminal parks every frame (ui.hide),
