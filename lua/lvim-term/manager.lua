@@ -63,9 +63,9 @@ local function resolve_cwd()
                 return fn.fnamemodify(name, ":h")
             end
         end
-        return (vim.uv or vim.loop).cwd()
+        return vim.uv.cwd()
     end
-    return (vim.uv or vim.loop).cwd()
+    return vim.uv.cwd()
 end
 
 --- Start (or restart) the shell job for `term` into a fresh terminal buffer.
